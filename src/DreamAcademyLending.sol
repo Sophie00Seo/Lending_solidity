@@ -34,6 +34,14 @@ contract DreamAcademyLending {
 
     mapping (address => etherHolder) _etherHolders;
 
+    uint constant LENDABLE_RATE1 = 1; // 분자
+    uint constant LENDABLE_RATE2 = 2; // 분모
+    uint constant LIQUIDATE_RATE1 = 3; // 분자
+    uint constant LIQUIDATE_RATE2 = 4; // 분모
+    uint constant INTEREST_RATE = 1000; // 분모
+    uint constant INTERVAL = 24 hours;
+
+
     constructor(IPriceOracle _oracle, address _usdcAddr){
         _priceOracle = _oracle;
         _usdcERC20 = ERC20(_usdcAddr);
@@ -68,7 +76,7 @@ contract DreamAcademyLending {
         borrowedCompound();
         require(amount <= _usdcERC20.balanceOf(address(this)), "not enough usdc in vault");
         indivBorrowedCompound(msg.sender);
-        uint256 rentable = _etherHolders[msg.sender]._etherAmount * _priceOracle.getPrice(address(0x0)) / _priceOracle.getPrice(tokenAddress) / 2 - _etherHolders[msg.sender]._borrowAmount;
+        uint256 rentable = _etherHolders[msg.sender]._etherAmount * _priceOracle.getPrice(address(0x0)) / _priceOracle.getPrice(tokenAddress) * LENDABLE_RATE1 / LENDABLE_RATE2 - _etherHolders[msg.sender]._borrowAmount;
         require(rentable >= amount, "not enough collateral");
 
         _etherHolders[msg.sender]._borrowAmount += amount;
@@ -89,7 +97,7 @@ contract DreamAcademyLending {
         borrowedCompound();
         indivBorrowedCompound(user);
         require(amount <= _etherHolders[user]._borrowAmount, "not enough to liquidiate");
-        require((_etherHolders[user]._etherAmount * _priceOracle.getPrice(address(0x0)) / _priceOracle.getPrice(tokenAddress)) * 3 / 4 < _etherHolders[user]._borrowAmount, "no liquidate needed");
+        require((_etherHolders[user]._etherAmount * _priceOracle.getPrice(address(0x0)) / _priceOracle.getPrice(tokenAddress)) * LIQUIDATE_RATE1 / LIQUIDATE_RATE2 < _etherHolders[user]._borrowAmount, "no liquidate needed");
 
         require(_etherHolders[user]._borrowAmount < 100 ether || amount == _etherHolders[user]._borrowAmount / 4, "only liquidating 25% possible");
 
@@ -105,7 +113,7 @@ contract DreamAcademyLending {
             require(amount <= _etherHolders[msg.sender]._etherAmount, "more than owner's balance");
             require(amount <= address(this).balance, "more than this balance");
             
-            require(_etherHolders[msg.sender]._borrowAmount * _priceOracle.getPrice(address(_usdcERC20)) / _priceOracle.getPrice(address(0x0)) <= (_etherHolders[msg.sender]._etherAmount - amount) * 3 / 4, "repay first");
+            require(_etherHolders[msg.sender]._borrowAmount * _priceOracle.getPrice(address(_usdcERC20)) / _priceOracle.getPrice(address(0x0)) <= (_etherHolders[msg.sender]._etherAmount - amount) * LIQUIDATE_RATE1 / LIQUIDATE_RATE2, "repay first");
             _etherHolders[msg.sender]._etherAmount -= amount;
             (bool success, ) = msg.sender.call{value: amount}(""); // call or send or transfer?
             require(success, "sending ether failed");
@@ -170,14 +178,14 @@ contract DreamAcademyLending {
 
     function borrowedCompound() internal {
         uint timeInterval = block.number - _totalBorrowedUpdateTime;
-        _totalBorrowedAcummulated = accrueInterest(_totalBorrowedAcummulated, RAY + RAY / 1000 / 24 hours, timeInterval);
+        _totalBorrowedAcummulated = accrueInterest(_totalBorrowedAcummulated, RAY + RAY / INTEREST_RATE / INTERVAL, timeInterval);
         
         _totalBorrowedUpdateTime = block.number;                                                                                                                                                                                                      
     }
     
     function indivBorrowedCompound(address user_) internal {
         uint timeInterval = block.number - _etherHolders[user_]._borrowUpdateTime;
-        _etherHolders[user_]._borrowAmount = accrueInterest(_etherHolders[user_]._borrowAmount, RAY + RAY / 1000 / 24 hours, timeInterval);
+        _etherHolders[user_]._borrowAmount = accrueInterest(_etherHolders[user_]._borrowAmount, RAY + RAY / INTEREST_RATE / INTERVAL, timeInterval);
         
         _etherHolders[user_]._borrowUpdateTime = block.number;
     }
