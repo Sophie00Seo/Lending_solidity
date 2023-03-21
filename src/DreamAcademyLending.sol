@@ -40,19 +40,20 @@ contract DreamAcademyLending {
     uint constant LIQUIDATE_RATE2 = 4; // 분모
     uint constant INTEREST_RATE = 1000; // 분모
     uint constant INTERVAL = 24 hours;
+    uint constant BLOCKTIME = 12;
 
 
     constructor(IPriceOracle _oracle, address _usdcAddr){
         _priceOracle = _oracle;
         _usdcERC20 = ERC20(_usdcAddr);
-        _totalusdcLastUpdateTime = block.number;
-        _totalBorrowedUpdateTime = block.number;
+        _totalusdcLastUpdateTime = block.number * BLOCKTIME;
+        _totalBorrowedUpdateTime = block.number * BLOCKTIME;
     }
 
     function initializeLendingProtocol(address usdcAddr_) public payable {
         _usdcERC20.transferFrom(msg.sender, address(this), msg.value);
         _totalusdcAmount += msg.value;
-        _totalusdcLastUpdateTime = block.number;
+        _totalusdcLastUpdateTime = block.number * BLOCKTIME;
     }
     function deposit(address tokenAddress, uint256 amount) public payable {
         usdcCompound();
@@ -64,10 +65,10 @@ contract DreamAcademyLending {
         } else {
             require(amount > 0, "no usdc transfered");
             require(_usdcERC20.balanceOf(msg.sender) >= amount, "not enough usdc");
-            uint256 accum = _usdcHolders[msg.sender]._indivAmount * (block.number - _usdcHolders[msg.sender]._indivUpdateTime);
+            uint256 accum = _usdcHolders[msg.sender]._indivAmount * (block.number * BLOCKTIME - _usdcHolders[msg.sender]._indivUpdateTime);
             _usdcHolders[msg.sender]._indivAccumulated += accum;
             _usdcHolders[msg.sender]._indivAmount += amount;
-            _usdcHolders[msg.sender]._indivUpdateTime = block.number;
+            _usdcHolders[msg.sender]._indivUpdateTime = block.number * BLOCKTIME;
             _totalusdcAmount += amount;
             _usdcERC20.transferFrom(msg.sender, address(this), amount);
         }
@@ -80,7 +81,7 @@ contract DreamAcademyLending {
         require(rentable >= amount, "not enough collateral");
 
         _etherHolders[msg.sender]._borrowAmount += amount;
-        _etherHolders[msg.sender]._borrowUpdateTime = block.number;
+        _etherHolders[msg.sender]._borrowUpdateTime = block.number * BLOCKTIME;
         _totalBorrowedAcummulated += amount;
         _totalBorrowedAmount += amount;
         _usdcERC20.transfer(msg.sender, amount);
@@ -103,7 +104,7 @@ contract DreamAcademyLending {
 
         _etherHolders[user]._borrowAmount -= amount;
         _etherHolders[user]._etherAmount -= amount * _priceOracle.getPrice(tokenAddress) / _priceOracle.getPrice(address(0x0));
-        _etherHolders[user]._borrowUpdateTime = block.number;
+        _etherHolders[user]._borrowUpdateTime = block.number * BLOCKTIME;
     }
     function withdraw(address tokenAddress, uint256 amount) public {
         borrowedCompound();
@@ -131,16 +132,18 @@ contract DreamAcademyLending {
     function getAccruedSupplyAmount(address usdcAddr_) public returns (uint){
         usdcCompound();
         borrowedCompound();
-        uint256 accum = _usdcHolders[msg.sender]._indivAmount * (block.number - _usdcHolders[msg.sender]._indivUpdateTime);
+        uint256 accum = _usdcHolders[msg.sender]._indivAmount * (block.number * BLOCKTIME - _usdcHolders[msg.sender]._indivUpdateTime);
         _usdcHolders[msg.sender]._indivAccumulated += accum;
-        _usdcHolders[msg.sender]._indivUpdateTime = block.number;
+        _usdcHolders[msg.sender]._indivUpdateTime = block.number * BLOCKTIME;
         return _usdcHolders[msg.sender]._indivAmount + (_totalBorrowedAcummulated - _totalBorrowedAmount) * _usdcHolders[msg.sender]._indivAccumulated / _totalusdcAccumulated;
     }
 
     function usdcCompound() internal {
-        _totalusdcAccumulated += _totalusdcAmount * (block.number - _totalusdcLastUpdateTime);
-        _totalusdcLastUpdateTime = block.number;
+        _totalusdcAccumulated += _totalusdcAmount * (block.number * BLOCKTIME - _totalusdcLastUpdateTime);
+        _totalusdcLastUpdateTime = block.number * BLOCKTIME;
     }
+
+    // ds math library
 
     uint constant RAY = 10 ** 27;
 
@@ -177,16 +180,14 @@ contract DreamAcademyLending {
     }
 
     function borrowedCompound() internal {
-        uint timeInterval = block.number - _totalBorrowedUpdateTime;
+        uint timeInterval = block.number * BLOCKTIME - _totalBorrowedUpdateTime;
         _totalBorrowedAcummulated = accrueInterest(_totalBorrowedAcummulated, RAY + RAY / INTEREST_RATE / INTERVAL, timeInterval);
-        
-        _totalBorrowedUpdateTime = block.number;                                                                                                                                                                                                      
+        _totalBorrowedUpdateTime = block.number * BLOCKTIME;
     }
     
     function indivBorrowedCompound(address user_) internal {
-        uint timeInterval = block.number - _etherHolders[user_]._borrowUpdateTime;
+        uint timeInterval = block.number * BLOCKTIME - _etherHolders[user_]._borrowUpdateTime;
         _etherHolders[user_]._borrowAmount = accrueInterest(_etherHolders[user_]._borrowAmount, RAY + RAY / INTEREST_RATE / INTERVAL, timeInterval);
-        
-        _etherHolders[user_]._borrowUpdateTime = block.number;
+        _etherHolders[user_]._borrowUpdateTime = block.number * BLOCKTIME;
     }
 }
