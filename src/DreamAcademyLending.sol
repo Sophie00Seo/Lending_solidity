@@ -18,10 +18,11 @@ contract DreamAcademyLending {
         uint _indivAccumulated;
         uint _indivAmount;
         uint _indivUpdateTime;
+        uint _indivInterest;
     }
 
     mapping (address => usdcHolder) _usdcHolders;
-    mapping (uint => uint[]) _usdcRatioChange;
+    address [] _usdcHoldersAddr;
 
     uint _totalBorrowedAmount;
     uint _totalBorrowedAccumed;
@@ -34,7 +35,6 @@ contract DreamAcademyLending {
     }
 
     mapping (address => etherHolder) _etherHolders;
-    mapping (uint => uint[]) _etherRatioChange;
 
     uint constant LENDABLE_RATE1 = 1; // 분자
     uint constant LENDABLE_RATE2 = 2; // 분모
@@ -72,6 +72,14 @@ contract DreamAcademyLending {
             _usdcHolders[msg.sender]._indivAmount += amount;
             _usdcHolders[msg.sender]._indivUpdateTime = block.number * BLOCKTIME;
             _totalusdcAmount += amount;
+            bool flag = false;
+            for(uint i=0; i<_usdcHoldersAddr.length; i++){
+                if(_usdcHoldersAddr[i] == msg.sender) flag = true;
+            }
+            if(flag == false) {
+                _usdcHoldersAddr.push(msg.sender);
+            }
+            rebalance();
             _usdcERC20.transferFrom(msg.sender, address(this), amount);
         }
     }
@@ -86,6 +94,7 @@ contract DreamAcademyLending {
         _etherHolders[msg.sender]._borrowUpdateTime = block.number * BLOCKTIME;
         _totalBorrowedAccumed += amount;
         _totalBorrowedAmount += amount;
+        rebalance();
         _usdcERC20.transfer(msg.sender, amount);
     }
     function repay(address tokenAddress, uint256 amount) public {
@@ -94,6 +103,7 @@ contract DreamAcademyLending {
         require(amount <= _usdcERC20.balanceOf(msg.sender), "less than you have");
         require(_etherHolders[msg.sender]._borrowAmount >= amount, "more than you borrowed");
         _etherHolders[msg.sender]._borrowAmount -= amount;
+        rebalance();
         _usdcERC20.transferFrom(msg.sender, address(this), amount);
     }
     function liquidate(address user, address tokenAddress, uint256 amount) public {
@@ -134,11 +144,8 @@ contract DreamAcademyLending {
     }
 
     function getAccruedSupplyAmount(address usdcAddr_) public returns (uint){
-        usdcCompound();
-        borrowedCompound();
-        _usdcHolders[msg.sender]._indivAccumulated += _usdcHolders[msg.sender]._indivAmount * (block.number * BLOCKTIME - _usdcHolders[msg.sender]._indivUpdateTime);
-        _usdcHolders[msg.sender]._indivUpdateTime = block.number * BLOCKTIME;
-        return _usdcHolders[msg.sender]._indivAmount + (_totalBorrowedAccumed - _totalBorrowedAmount) * _usdcHolders[msg.sender]._indivAccumulated / _totalusdcAccumulated;
+        rebalance();
+        return _usdcHolders[msg.sender]._indivAmount + _usdcHolders[msg.sender]._indivInterest;
     }
 
     function usdcCompound() internal {
@@ -190,5 +197,19 @@ contract DreamAcademyLending {
         _etherHolders[user_]._borrowAmount = accrueInterest(_etherHolders[user_]._borrowAmount, RAY+RAY/INTEREST_RATE, timeInterval / 24 hours);
         _etherHolders[user_]._borrowAmount = accrueInterest(_etherHolders[user_]._borrowAmount, RAY + RAY / INTEREST_RATE / INTERVAL, timeInterval - (timeInterval / 24 hours) * 24 hours);
         _etherHolders[user_]._borrowUpdateTime = block.number * BLOCKTIME;
+    }
+
+    function rebalance() internal {
+        usdcCompound();
+        borrowedCompound();
+        if(_totalusdcAccumulated == 0) return;
+        for(uint i=0; i<_usdcHoldersAddr.length; i++){
+            _usdcHolders[_usdcHoldersAddr[i]]._indivAccumulated += _usdcHolders[_usdcHoldersAddr[i]]._indivAmount * (block.number * BLOCKTIME - _usdcHolders[_usdcHoldersAddr[i]]._indivUpdateTime);
+            _usdcHolders[_usdcHoldersAddr[i]]._indivInterest += (_totalBorrowedAccumed - _totalBorrowedAmount) * _usdcHolders[_usdcHoldersAddr[i]]._indivAccumulated / _totalusdcAccumulated;
+            _usdcHolders[_usdcHoldersAddr[i]]._indivUpdateTime = block.number * BLOCKTIME;
+            _usdcHolders[_usdcHoldersAddr[i]]._indivAccumulated = 0;
+        }
+        _totalBorrowedAmount = _totalBorrowedAccumed;
+        _totalusdcAccumulated = 0;
     }
 }
