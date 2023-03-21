@@ -21,9 +21,10 @@ contract DreamAcademyLending {
     }
 
     mapping (address => usdcHolder) _usdcHolders;
+    mapping (uint => uint[]) _usdcRatioChange;
 
     uint _totalBorrowedAmount;
-    uint _totalBorrowedAcummulated;
+    uint _totalBorrowedAccumed;
     uint _totalBorrowedUpdateTime;
 
     struct etherHolder{
@@ -33,6 +34,7 @@ contract DreamAcademyLending {
     }
 
     mapping (address => etherHolder) _etherHolders;
+    mapping (uint => uint[]) _etherRatioChange;
 
     uint constant LENDABLE_RATE1 = 1; // 분자
     uint constant LENDABLE_RATE2 = 2; // 분모
@@ -82,7 +84,7 @@ contract DreamAcademyLending {
 
         _etherHolders[msg.sender]._borrowAmount += amount;
         _etherHolders[msg.sender]._borrowUpdateTime = block.number * BLOCKTIME;
-        _totalBorrowedAcummulated += amount;
+        _totalBorrowedAccumed += amount;
         _totalBorrowedAmount += amount;
         _usdcERC20.transfer(msg.sender, amount);
     }
@@ -120,22 +122,23 @@ contract DreamAcademyLending {
             require(success, "sending ether failed");
         } else {
             require(amount <= _usdcERC20.balanceOf(address(this)), "not enough balance on this contract");
-            require(amount <= _usdcHolders[msg.sender]._indivAmount, "more than your balance");
-            _usdcHolders[msg.sender]._indivAccumulated += _usdcHolders[msg.sender]._indivAmount * (block.number - _usdcHolders[msg.sender]._indivUpdateTime);
+            _usdcHolders[msg.sender]._indivAccumulated += _usdcHolders[msg.sender]._indivAmount * (block.number * BLOCKTIME - _usdcHolders[msg.sender]._indivUpdateTime);
             uint256 withdrawalAmount = getAccruedSupplyAmount(address(_usdcERC20));
-            _totalusdcAccumulated -= _usdcHolders[msg.sender]._indivAccumulated;
-            _totalusdcAmount -= withdrawalAmount;
-            _usdcERC20.transfer(msg.sender, withdrawalAmount);
+            require(withdrawalAmount >= amount, "more than your balance");
+            _totalusdcAccumulated -= _usdcHolders[msg.sender]._indivAccumulated * amount / withdrawalAmount;
+            _totalusdcAmount -= amount;
+            _usdcHolders[msg.sender]._indivAccumulated -= _usdcHolders[msg.sender]._indivAccumulated * amount / withdrawalAmount;
+            _usdcHolders[msg.sender]._indivAmount -= _usdcHolders[msg.sender]._indivAmount * amount / withdrawalAmount;
+            _usdcERC20.transfer(msg.sender, amount);
         }
     }
 
     function getAccruedSupplyAmount(address usdcAddr_) public returns (uint){
         usdcCompound();
         borrowedCompound();
-        uint256 accum = _usdcHolders[msg.sender]._indivAmount * (block.number * BLOCKTIME - _usdcHolders[msg.sender]._indivUpdateTime);
-        _usdcHolders[msg.sender]._indivAccumulated += accum;
+        _usdcHolders[msg.sender]._indivAccumulated += _usdcHolders[msg.sender]._indivAmount * (block.number * BLOCKTIME - _usdcHolders[msg.sender]._indivUpdateTime);
         _usdcHolders[msg.sender]._indivUpdateTime = block.number * BLOCKTIME;
-        return _usdcHolders[msg.sender]._indivAmount + (_totalBorrowedAcummulated - _totalBorrowedAmount) * _usdcHolders[msg.sender]._indivAccumulated / _totalusdcAccumulated;
+        return _usdcHolders[msg.sender]._indivAmount + (_totalBorrowedAccumed - _totalBorrowedAmount) * _usdcHolders[msg.sender]._indivAccumulated / _totalusdcAccumulated;
     }
 
     function usdcCompound() internal {
@@ -153,10 +156,6 @@ contract DreamAcademyLending {
 
     function mul(uint x, uint y) internal view returns (uint z) {
         require(y == 0 || (z = x * y) / y == x, "ds-math-mul-overflow");
-    }
-
-    function div(uint x, uint y) public view returns (uint){
-        return x / y;
     }
 
     function rmul(uint x, uint y) public view returns (uint z) {
@@ -181,13 +180,15 @@ contract DreamAcademyLending {
 
     function borrowedCompound() internal {
         uint timeInterval = block.number * BLOCKTIME - _totalBorrowedUpdateTime;
-        _totalBorrowedAcummulated = accrueInterest(_totalBorrowedAcummulated, RAY + RAY / INTEREST_RATE / INTERVAL, timeInterval);
+        _totalBorrowedAccumed = accrueInterest(_totalBorrowedAccumed, RAY+RAY/INTEREST_RATE, timeInterval / 24 hours);
+        _totalBorrowedAccumed = accrueInterest(_totalBorrowedAccumed, RAY + RAY / INTEREST_RATE / INTERVAL, timeInterval - (timeInterval / 24 hours) * 24 hours);
         _totalBorrowedUpdateTime = block.number * BLOCKTIME;
     }
     
     function indivBorrowedCompound(address user_) internal {
         uint timeInterval = block.number * BLOCKTIME - _etherHolders[user_]._borrowUpdateTime;
-        _etherHolders[user_]._borrowAmount = accrueInterest(_etherHolders[user_]._borrowAmount, RAY + RAY / INTEREST_RATE / INTERVAL, timeInterval);
+        _etherHolders[user_]._borrowAmount = accrueInterest(_etherHolders[user_]._borrowAmount, RAY+RAY/INTEREST_RATE, timeInterval / 24 hours);
+        _etherHolders[user_]._borrowAmount = accrueInterest(_etherHolders[user_]._borrowAmount, RAY + RAY / INTEREST_RATE / INTERVAL, timeInterval - (timeInterval / 24 hours) * 24 hours);
         _etherHolders[user_]._borrowUpdateTime = block.number * BLOCKTIME;
     }
 }
