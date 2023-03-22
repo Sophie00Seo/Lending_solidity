@@ -117,6 +117,7 @@ contract DreamAcademyLending {
         _etherHolders[user]._borrowAmount -= amount;
         _etherHolders[user]._etherAmount -= amount * _priceOracle.getPrice(tokenAddress) / _priceOracle.getPrice(address(0x0));
         _etherHolders[user]._borrowUpdateTime = block.number * BLOCKTIME;
+        rebalance();
     }
     function withdraw(address tokenAddress, uint256 amount) public {
         borrowedCompound();
@@ -188,14 +189,14 @@ contract DreamAcademyLending {
     function borrowedCompound() internal {
         uint timeInterval = block.number * BLOCKTIME - _totalBorrowedUpdateTime;
         _totalBorrowedAccumed = accrueInterest(_totalBorrowedAccumed, RAY+RAY/INTEREST_RATE, timeInterval / 24 hours);
-        _totalBorrowedAccumed = accrueInterest(_totalBorrowedAccumed, RAY + RAY / INTEREST_RATE / INTERVAL, timeInterval - (timeInterval / 24 hours) * 24 hours);
+        _totalBorrowedAccumed = accrueInterest(_totalBorrowedAccumed, 1000000011568290959081926677, timeInterval - (timeInterval / 24 hours) * 24 hours); // hard-coded the accurate interest
         _totalBorrowedUpdateTime = block.number * BLOCKTIME;
     }
     
     function indivBorrowedCompound(address user_) internal {
         uint timeInterval = block.number * BLOCKTIME - _etherHolders[user_]._borrowUpdateTime;
         _etherHolders[user_]._borrowAmount = accrueInterest(_etherHolders[user_]._borrowAmount, RAY+RAY/INTEREST_RATE, timeInterval / 24 hours);
-        _etherHolders[user_]._borrowAmount = accrueInterest(_etherHolders[user_]._borrowAmount, RAY + RAY / INTEREST_RATE / INTERVAL, timeInterval - (timeInterval / 24 hours) * 24 hours);
+        _etherHolders[user_]._borrowAmount = accrueInterest(_etherHolders[user_]._borrowAmount, 1000000011568290959081926677, timeInterval - (timeInterval / 24 hours) * 24 hours); // hard-coded the accurate interest
         _etherHolders[user_]._borrowUpdateTime = block.number * BLOCKTIME;
     }
 
